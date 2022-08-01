@@ -8,13 +8,18 @@ import aiomysql
 def log(sql, args=()):
 	logging.info('SQL: %s' % sql)
 
-
+# 创建一个数据库连接池，以保证复用
+# 协程开弓没有回头箭，因为前面的访问网站就是使用了协程
+# 后面的访问数据库也必须使用协程，使用单线程（无协程）就会降低整体时间
 async def create_pool(loop, **kw):
+    # 写入日志
 	logging.info('create database connection pool...')
 	global __pool
 	__pool = await aiomysql.create_pool(
+        # 某些参数是非必须的，则提供了默认值
 		host=kw.get('host', 'localhost'),
 		port=kw.get('port', 3306),
+        # user, password等必须的则使用字典方式获取
 		user=kw['user'],
 		password=kw['password'],
 		db=kw['db'],
@@ -24,7 +29,7 @@ async def create_pool(loop, **kw):
 		minsize=kw.get('minsize', 1),
 		loop=loop
 		)
-
+# 封装select语句
 async def select(sql, args, size=None):
     log(sql, args)
     global __pool
@@ -214,20 +219,20 @@ class Model(dict, metaclass=ModelMetaclass):
         args.append(self.getValueOrDefault(self.__primary_key__))
         rows = await execute(self.__insert__, args)
         if rows != 1:
-            logging.warn('failed to insert record: affected rows: %s' % rows)
+            logging.warning('failed to insert record: affected rows: %s' % rows)
 
     async def update(self):
         args = list(map(self.getValue, self.__fields__))
         args.append(self.getValue(self.__primary_key__))
         rows = await execute(self.__update__, args)
         if rows != 1:
-            logging.warn('failed to update by primary key: affected rows: %s' % rows)
+            logging.warning('failed to update by primary key: affected rows: %s' % rows)
 
     async def remove(self):
         args = [self.getValue(self.__primary_key__)]
         rows = await execute(self.__delete__, args)
         if rows != 1:
-            logging.warn('failed to remove by primary key: affected rows: %s' % rows)
+            logging.warning('failed to remove by primary key: affected rows: %s' % rows)
 
 
 
