@@ -35,10 +35,10 @@ import asyncio
 
 
 async def test(loop):
-    await orm.create_pool(loop=loop, user='www-data', password='www-data', database='awesome')
+    await orm.create_pool(loop=loop, user='root', password='123', database='awesome')
 
     u = User(name='Test', email='test@example.com', passwd='1234567890', image='about:blank')
-
+    print(u)
     await u.save()
 
 

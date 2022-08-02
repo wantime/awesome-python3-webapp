@@ -22,7 +22,7 @@ async def create_pool(loop, **kw):
         # user, password等必须的则使用字典方式获取
 		user=kw['user'],
 		password=kw['password'],
-		db=kw['db'],
+		db=kw['database'],
 		charset=kw.get('charset', 'utf8'),
 		autocommit=kw.get('autocommit', True),
 		maxsize=kw.get('maxsize', 10),
@@ -51,6 +51,9 @@ async def execute(sql, args, autocommit=True):
             await conn.begin()
         try:
             async with conn.cursor(aiomysql.DictCursor) as cur:
+                query = sql.replace('?', '%s')
+                print(query)
+                print(args)
                 await cur.execute(sql.replace('?', '%s'), args)
                 affected = cur.rowcount
             if not autocommit:
