@@ -5,6 +5,9 @@ __author__ = 'wantime@foxmail.com'
 import asyncio, logging
 import aiomysql
 
+from models import User
+
+
 def log(sql, args=()):
 	logging.info('SQL: %s' % sql)
 
@@ -236,6 +239,10 @@ class Model(dict, metaclass=ModelMetaclass):
         rows = await execute(self.__delete__, args)
         if rows != 1:
             logging.warning('failed to remove by primary key: affected rows: %s' % rows)
+
+
+if __name__ == '__main__':
+    user = await User.find(1)
 
 
 
