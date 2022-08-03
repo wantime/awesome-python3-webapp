@@ -4,10 +4,7 @@ __author__ = 'wantime@foxmail.com'
 
 import asyncio, logging
 import aiomysql
-
-from models import User
-
-
+import time,uuid
 def log(sql, args=()):
 	logging.info('SQL: %s' % sql)
 
@@ -36,7 +33,7 @@ async def create_pool(loop, **kw):
 async def select(sql, args, size=None):
     log(sql, args)
     global __pool
-    async with __pool.get() as conn:
+    async with __pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(sql.replace('?', '%s'), args or ())
             if size:
@@ -46,10 +43,9 @@ async def select(sql, args, size=None):
         logging.info('rows returned: %s' % len(rs))
         return rs
 
-
 async def execute(sql, args, autocommit=True):
     log(sql)
-    async with __pool.get() as conn:
+    async with __pool.acquire() as conn:
         if not autocommit:
             await conn.begin()
         try:
@@ -73,6 +69,9 @@ def create_args_string(num):
         L.append('?')
     return ', '.join(L)
 
+def next_id():
+    return '%015d%s000' % (int(time.time() * 1000), uuid.uuid4().hex)
+
 class Field(object):
 
 	def __init__(self, name, column_type, primary_key, default):
@@ -83,7 +82,6 @@ class Field(object):
 
 	def __str__(self):
 		return '<%s, %s:%s>' % (self.__class__.__name__, self.column_type, self.name)
-
 
 class StringField(Field):
 
@@ -240,9 +238,6 @@ class Model(dict, metaclass=ModelMetaclass):
         if rows != 1:
             logging.warning('failed to remove by primary key: affected rows: %s' % rows)
 
-
-if __name__ == '__main__':
-    user = await User.find(1)
 
 
 

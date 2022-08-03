@@ -2,32 +2,33 @@
 # -*- coding: utf-8 -*-
 
 __author__ = 'Ayayaneru'
-
-# 蔡老师的源码跑出了两个错误，这里暂时用的凹酱,源码见下
+# 廖老师的源码跑出了两个错误，这里暂时用的凹酱,源码见下
 # https://github.com/yzyly1992/2019_Python_Web_Dev/blob/master/www/orm.py
 # 相对于上面的源码，我只是加了注释，改了两个字符，顺序可能有点不一样
 # 某个地方暂时不懂就跳过，在后面结合上下文来理解
 # 在学习过程中不懂的点就回去看蔡老师的教程，然后就发现，之前抽象的现在就能懂一些了
 
+__author__ = 'wantime@github.com'
 
-# *** day03 begin ***
+# *** orm部分与model部分 begin ***
 
-import asyncio, logging, aiomysql
+import aiomysql
+import asyncio
+import logging
 
 
-# 创建基本日志函数，变量 sql 出现了很多次，这里我们还不知道它的作用
+# 创建基本日志函数，变量sql 代表sql语句，这里封装一个log函数包装写入日志的格式
 def log(sql, args=()):
     logging.info('SQL: %s' % sql)
 
 
-# 异步IO起手式 async ，创建连接池函数， pool 用法见下：
-# https://aiomysql.readthedocs.io/en/latest/pool.html?highlight=create_pool
+# 刚开始这里比较难，需要在很多对方使用协程
+# 这里用新语法代替了直接的修饰符, 所以函数体内的yield from 需要换成await
 async def create_pool(loop, **kw):
     logging.info('create database connection pool...')
     # 声明 __pool 为全局变量
     global __pool
-    # 使用这些基本参数来创建连接池
-    # await 和 async 是联动的（异步IO）
+    # 协程创建数据库连接池，并且将其设为全局变量
     __pool = await aiomysql.create_pool(
         host=kw.get('host', 'localhost'),
         port=kw.get('port', 3306),
@@ -41,70 +42,51 @@ async def create_pool(loop, **kw):
         loop=loop
     )
 
-
+# 直接操作数据库的select语句
 async def select(sql, args, size=None):
     log(sql, args)
     global __pool
-    # with-as: 可以方便我们执行一些清理工作，如 close 和 exit：
-    # https://www.jianshu.com/p/c00df845323c
 
-    # 这里的 await 很多，可能看不懂什么意思，我暂时把它理解为：
-    # 可以让它后面执行的语句等一会，防止多个程序同时执行，达到异步效果
-    with (await __pool) as conn:
-        # cursor 叫游标，conn没懂，应该也是个‘池’
+    # with (await __pool) as conn:
+    # 修改语句使用__pool.acquire()
+    async with __pool.acquire() as conn:
+
         # 'aiomysql.DictCursor'看似复杂，但它仅仅是要求返回字典格式
         cur = await conn.cursor(aiomysql.DictCursor)
-        # cursor 游标实例可以调用 execute 来执行一条单独的 SQL 语句，参考自：
-        # https://docs.python.org/zh-cn/3.8/library/sqlite3.html?highlight=execute#cursor-objects
-        # 这里的 cur 来自上面的 conn.cursor ，然后执行后面的 sql ，具体sql干了啥先不管
+        # sql是一个部分参数用%s表示的字符串SQL语句，具体参数则在传入的args中
+        # 这里的替换应该是为后期开发减少麻烦，部分SQL语句会用？表示变量
         await cur.execute(sql.replace('?', '%s'), args or ())
-        # size 为空时为 False，上面定义了初始值为 None ，具体得看传入的参数有没有定义 size
         if size:
-            # fetchmany 可以获取行数为 size 的多行查询结果集，返回一个列表
             rs = await cur.fetchmany(size)
         else:
-            # fetchall 可以获取一个查询结果的所有（剩余）行，返回一个列表
             rs = await cur.fetchall()
-        #  close() ，立即关闭 cursor ，从这一时刻起该 cursor 将不再可用
         await cur.close()
-        # 日志：提示返回了多少行
         logging.info('rows returned: %s' % len(rs))
-        # 现在我们知道了，这个 select 函数给我们从 SQL 返回了一个列表
         return rs
 
 
-# execute ：执行
+# 直接操作数据库的execute语句
 async def execute(sql, args):
     log(sql)
     global __pool
-    with (await __pool) as conn:
+    async with __pool.acquire() as conn:
         try:
             cur = await conn.cursor()
             await cur.execute(sql.replace('?', '%s'), args)
-            # rowcount 获取行数，应该表示的是该函数影响的行数
             affected = cur.rowcount
             await cur.close()
-        except BaseException as _:
-            # 源码 except BaseException as e: 反正不用这个 e ，改掉就不报错
-            # 将错误抛出，BaseEXception 是异常不用管
+        except BaseException as e:
             raise
-        # 返回行数
         return affected
 
 
-# 今天先摸了，写这么多注释也是一个学习的过程 2020/10/14
-
-# 这个函数只在下面的 Model元类中被调用， 作用好像是加数量为 num 的'?'
 def create_args_string(num):
     L = []
-    for _ in range(num):
-        # 源码是 for n in range(num):  我看着反正 n 也不会用上，改成这个就不报错了
+    for n in range(num):
         L.append('?')
     return ', '.join(L)
 
-
-# Model 只是一个基类，所以先定义 ModelMetaclass ，再在定义 Model 时使用 metaclass 参数
-# 参考蔡老师教程： https://www.liaoxuefeng.com/wiki/1016959663602400/1017592449371072
+# 这块还没有完全理解
 class ModelMetaclass(type):
     # __new__()方法接收到的参数依次是：
     # cls：当前准备创建的类的对象 class
@@ -112,6 +94,7 @@ class ModelMetaclass(type):
     # bases：类继承的父类集合 Tuple
     # attrs：类的方法集合
     def __new__(cls, name, bases, attrs):
+        print('调用了ModelMetaclass')
         # 排除 Model 类本身，返回它自己
         if name == 'Model':
             return type.__new__(cls, name, bases, attrs)
@@ -154,9 +137,9 @@ class ModelMetaclass(type):
         # 构造默认的 SELECT, INSERT, UPDAT E和 DELETE 语句
         attrs['__select__'] = 'select `%s`, %s from `%s`' % (primaryKey, ', '.join(escaped_fields), tableName)
         attrs['__insert__'] = 'insert into `%s` (%s, `%s`) values (%s)' % (
-        tableName, ', '.join(escaped_fields), primaryKey, create_args_string(len(escaped_fields) + 1))
+            tableName, ', '.join(escaped_fields), primaryKey, create_args_string(len(escaped_fields) + 1))
         attrs['__update__'] = 'update `%s` set %s where `%s`=?' % (
-        tableName, ', '.join(map(lambda f: '`%s`=?' % (mappings.get(f).name or f), fields)), primaryKey)
+            tableName, ', '.join(map(lambda f: '`%s`=?' % (mappings.get(f).name or f), fields)), primaryKey)
         attrs['__delete__'] = 'delete from `%s` where `%s`=?' % (tableName, primaryKey)
         return type.__new__(cls, name, bases, attrs)
 
@@ -164,22 +147,18 @@ class ModelMetaclass(type):
 # metaclass 参数提示 Model 要通过上面的 __new__ 来创建
 class Model(dict, metaclass=ModelMetaclass):
     def __init__(self, **kw):
-        # super 用来引用父类？ 引用了 ModelMetaclass ？ super 文档：
-        # https://docs.python.org/zh-cn/3.8/library/functions.html?highlight=super#super
+        print('调用了Model')
         super(Model, self).__init__(**kw)
 
-    # 返回参数为 key 的自身属性， 如果出错则报具体错误
     def __getattr__(self, key):
         try:
             return self[key]
         except KeyError:
             raise AttributeError(r"'Model' object has no attribute '%s'" % key)
 
-    # 设置自身属性
     def __setattr__(self, key, value):
         self[key] = value
 
-    # 通过属性返回想要的值
     def getValue(self, key):
         return getattr(self, key, None)
 
@@ -187,7 +166,6 @@ class Model(dict, metaclass=ModelMetaclass):
     def getValueOrDefault(self, key):
         value = getattr(self, key, None)
         if value is None:
-            # 如果 value 为 None，定位某个键； value 不为 None 就直接返回
             field = self.__mappings__[key]
             if field.default is not None:
                 # 如果 field.default 不是 None ： 就把它赋值给 value
@@ -233,6 +211,7 @@ class Model(dict, metaclass=ModelMetaclass):
             else:
                 # 不行就报错
                 raise ValueError('Invalid limit value: %s' % str(limit))
+
         rs = await select(' '.join(sql), args)
         # 返回选择的列表里的所有值 ，完成 findAll 函数
         return [cls(**r) for r in rs]
@@ -320,18 +299,34 @@ class TextField(Field):
     def __init__(self, name=None, default=None):
         super().__init__(name, 'text', False, default)
 
+import time
 class User(Model):
+    print('调用了User')
     __table__ = 'users'
 
     id = IntegerField(primary_key=True)
     name = StringField()
+    # id = StringField(primary_key=True, default=next_id(), ddl='varchar(50)')
+    email = StringField(ddl='varchar(50)')
+    passwd = StringField(ddl='varchar(50)')
+    admin = BooleanField()
+    name = StringField(ddl='varchar(50)')
+    image = StringField(ddl='varchar(500)')
+    created_at = FloatField(default=time.time)
 
-def test():
-    # user = User(id=2, name='M')
-    # yield from user.save()
-    yield from User.findAll()
+async def test_save(loop):
+    # 测试时需要修改为自己使用的数据库账户与密码
+    await create_pool(loop, user='www-data', password='www-data', db='awesome')
+    user = User(id=3, name='c', email='c@example', passwd='123', image='about:blank')
+    await user.save()
+async def test_findAll(loop):
+    await create_pool(loop, user='www-data', password='www-data', db='awesome')
+    res = await User.findAll()
+    print(res)
 
 if __name__ == '__main__':
-    create_pool(loop=loop, {''})
-    x = test()
-    print(x)
+
+    loop = asyncio.get_event_loop()
+
+    loop.run_until_complete(test_findAll(loop))
+

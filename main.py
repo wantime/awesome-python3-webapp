@@ -1,50 +1,21 @@
-# import asyncio
-#
-# import orm
-# import aiomysql
-# from models import User
-#
-# async def test(loop):
-#
-#     # await orm.create_pool(user='root', password='123', db='awesome', loop=loop)
-#     #
-#     # u = User(name='Test', email='test@example.com', passwd='1234567890', image='abut:blank')
-#     #
-#     # await u.save()
-#     loop = asyncio.get_event_loop()
-#
-#     loop.run_until_complete(test(loop))
-#     x = aiomysql.create_pool(
-#
-#         user='root',
-#         password='123',
-#         db='mysql',
-#         charset='utf8',
-#         autocommit=True,
-#         maxsize=10,
-#         minsize=1,
-#         loop=loop
-#     )
-#     print(x)
-#
-#
-
-import orm
+from orm import create_pool
 from models import User, Blog, Comment
 import asyncio
 
 
 async def test(loop):
-    await orm.create_pool(loop=loop, user='root', password='123', database='awesome')
-
-    u = User(name='Test', email='test@example.com', passwd='1234567890', image='about:blank')
-    print(u)
-    await u.save()
+    await create_pool(loop, user='www-data', password='www-data', database='awesome')
+    user = User(id=2, name='b', email='b@example', passwd='123', image='about:blank')
+    await user.save()
 
 
+if __name__ == '__main__':
 
-loop = asyncio.get_event_loop()
 
-loop.run_until_complete(test(loop))
-for x in test(loop=loop):
-    pass
+    loop = asyncio.get_event_loop()
+
+
+    loop.run_until_complete(test(loop))
+
+
+
