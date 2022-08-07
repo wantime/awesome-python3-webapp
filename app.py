@@ -125,6 +125,8 @@ async def init(loop=None):
     # 也就是绑定路由
     #app.router.add_get('/', index_test)
     await create_pool(loop=None, user='www-data', password='www-data', database='awesome')
+
+
     # 写入日志
     logging.info('server started at http://127.0.0.1:9000...')
     # web.run_app(app, host='127.0.0.1', port=9000)

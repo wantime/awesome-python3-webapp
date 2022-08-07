@@ -47,19 +47,14 @@ def toDict(d):
         D[k] = toDict(v) if isinstance(v, dict) else v
     return D
 
-if __name__ == '__main__':
 
-    configs = config_default.configs
 
-    try:
-        import config_override
+configs = config_default.configs
 
-        configs = merge(configs, config_override.configs)
-    except ImportError:
-        pass
-    configs = toDict(configs)
+try:
+    import config_override
 
-    # print(1)
-    # print(configs)
-    for k, v in configs.items():
-        print('%s:%s\n' %(k, v))
+    configs = merge(configs, config_override.configs)
+except ImportError:
+    pass
+configs = toDict(configs)
