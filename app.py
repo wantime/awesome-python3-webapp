@@ -1,15 +1,28 @@
 import logging, os, json, time
+logging.basicConfig(level=logging.INFO)
 from datetime import datetime
-from models import User
 from aiohttp import web
 
 from jinja2 import Environment, FileSystemLoader
 
-logging.basicConfig(level=logging.INFO)
+from handlers import cookie2user, COOKIE_NAME
+
+# logger = logging.getLogger()
+# logger.setLevel('DEBUG')
+# # BASIC_FORMAT = "%(asctime)s:%(levelname)s:%(message)s"
+# # DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+# # formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
+# chlr = logging.StreamHandler() # 输出到控制台的handler
+# # chlr.setFormatter(formatter)
+# chlr.setLevel('INFO')  # 也可以不设置，不设置就默认用logger的level
+# # fhlr = logging.FileHandler('example.log') # 输出到文件的handler
+# # fhlr.setFormatter(formatter)
+# logger.info('this is info')
+# chlr.setLevel('DEBUG')
+# logger.debug('this is debug')
+# logging = logger
 
 from coroweb import add_routes, add_static
-import orm
-
 from orm import create_pool
 
 
@@ -34,12 +47,22 @@ def init_jinja2(app, **kw):
             env.filters[name] = f
     app['__templating__'] = env
 
-async def logger_factory(app, handler):
-    async def logger(request):
-        logging.info('Request: %s %s' % (request.method, request.path))
-        # await asyncio.sleep(0.3)
+
+async def auth_factory(app, handler):
+    async def auth(request):
+        logging.info('check user: %s %s' % (request.method, request.path))
+        request.__user__ = None
+        cookie_str = request.cookies.get(COOKIE_NAME)
+        if cookie_str:
+            user = await cookie2user(cookie_str)
+            if user:
+                logging.info('set current user: %s' % user.email)
+                request.__user__ = user
+        if request.path.startswith('/manage/') and (request.__user__ is None or not request.__user__.admin):
+            return web.HTTPFound('/signin')
         return (await handler(request))
-    return logger
+    return auth
+
 
 async def data_factory(app, handler):
     async def parse_data(request):
@@ -51,7 +74,9 @@ async def data_factory(app, handler):
                 request.__data__ = await request.post()
                 logging.info('request form: %s' % str(request.__data__))
         return (await handler(request))
+
     return parse_data
+
 
 async def logger_factory(app, handler):
     async def logger(request):
@@ -60,6 +85,7 @@ async def logger_factory(app, handler):
         return (await handler(request))
 
     return logger
+
 
 async def response_factory(app, handler):
     async def response(request):
@@ -80,7 +106,8 @@ async def response_factory(app, handler):
         if isinstance(r, dict):
             template = r.get('__template__')
             if template is None:
-                resp = web.Response(body=json.dumps(r, ensure_ascii=False, default=lambda o: o.__dict__).encode('utf-8'))
+                resp = web.Response(
+                    body=json.dumps(r, ensure_ascii=False, default=lambda o: o.__dict__).encode('utf-8'))
                 resp.content_type = 'application/json;charset=utf-8'
                 return resp
             else:
@@ -97,7 +124,9 @@ async def response_factory(app, handler):
         resp = web.Response(body=str(r).encode('utf-8'))
         resp.content_type = 'text/plain;charset=utf-8'
         return resp
+
     return response
+
 
 def datetime_filter(t):
     delta = int(time.time() - t)
@@ -123,9 +152,8 @@ async def init(loop=None):
     add_static(app)
     # 对它的‘GET’请求绑定一个处理方法
     # 也就是绑定路由
-    #app.router.add_get('/', index_test)
+    # app.router.add_get('/', index_test)
     await create_pool(loop=None, user='www-data', password='www-data', database='awesome')
-
 
     # 写入日志
     logging.info('server started at http://127.0.0.1:9000...')
@@ -133,6 +161,4 @@ async def init(loop=None):
     return app
 
 
-
-if __name__ == '__main__':
-    web.run_app(init(), host='127.0.0.1', port=9000)
+web.run_app(init(), host='127.0.0.1', port=9000)
