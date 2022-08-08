@@ -1,40 +1,29 @@
-import logging, os, json, time
-logging.basicConfig(level=logging.INFO)
-from datetime import datetime
-from aiohttp import web
 
+import logging; logging.basicConfig(level=logging.INFO)
+
+import asyncio, os, json, time
+from datetime import datetime
+
+from aiohttp import web
 from jinja2 import Environment, FileSystemLoader
 
-from handlers import cookie2user, COOKIE_NAME
+from config import configs
 
-# logger = logging.getLogger()
-# logger.setLevel('DEBUG')
-# # BASIC_FORMAT = "%(asctime)s:%(levelname)s:%(message)s"
-# # DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
-# # formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
-# chlr = logging.StreamHandler() # 输出到控制台的handler
-# # chlr.setFormatter(formatter)
-# chlr.setLevel('INFO')  # 也可以不设置，不设置就默认用logger的level
-# # fhlr = logging.FileHandler('example.log') # 输出到文件的handler
-# # fhlr.setFormatter(formatter)
-# logger.info('this is info')
-# chlr.setLevel('DEBUG')
-# logger.debug('this is debug')
-# logging = logger
-
+import orm
 from coroweb import add_routes, add_static
-from orm import create_pool
+
+from handlers import cookie2user, COOKIE_NAME
 
 
 def init_jinja2(app, **kw):
     logging.info('init jinja2...')
     options = dict(
-        autoescape=kw.get('autoescape', True),
-        block_start_string=kw.get('block_start_string', '{%'),
-        block_end_string=kw.get('block_end_string', '%}'),
-        variable_start_string=kw.get('variable_start_string', '{{'),
-        variable_end_string=kw.get('variable_end_string', '}}'),
-        auto_reload=kw.get('auto_reload', True)
+        autoescape = kw.get('autoescape', True),
+        block_start_string = kw.get('block_start_string', '{%'),
+        block_end_string = kw.get('block_end_string', '%}'),
+        variable_start_string = kw.get('variable_start_string', '{{'),
+        variable_end_string = kw.get('variable_end_string', '}}'),
+        auto_reload = kw.get('auto_reload', True)
     )
     path = kw.get('path', None)
     if path is None:
@@ -46,6 +35,15 @@ def init_jinja2(app, **kw):
         for name, f in filters.items():
             env.filters[name] = f
     app['__templating__'] = env
+
+
+async def logger_factory(app, handler):
+    async def logger(request):
+        logging.info('Request: %s %s' % (request.method, request.path))
+        # await asyncio.sleep(0.3)
+        return (await handler(request))
+
+    return logger
 
 
 async def auth_factory(app, handler):
@@ -64,6 +62,7 @@ async def auth_factory(app, handler):
     return auth
 
 
+
 async def data_factory(app, handler):
     async def parse_data(request):
         if request.method == 'POST':
@@ -78,18 +77,10 @@ async def data_factory(app, handler):
     return parse_data
 
 
-async def logger_factory(app, handler):
-    async def logger(request):
-        logging.info('Request: %s %s' % (request.method, request.path))
-        # await asyncio.sleep(0.3)
-        return (await handler(request))
-
-    return logger
-
 
 async def response_factory(app, handler):
     async def response(request):
-        logging.info('Request handler...')
+        logging.info('Response handler...')
         r = await handler(request)
         if isinstance(r, web.StreamResponse):
             return r
@@ -111,11 +102,17 @@ async def response_factory(app, handler):
                 resp.content_type = 'application/json;charset=utf-8'
                 return resp
             else:
+                # r['__user__'] = request.__user__
+                # resp = web.Response(body=app['__templating__'].get_template(template).render(**r).encode('utf-8'))
+                # resp.content_type = 'text/html;charset=utf-8'
+                # return resp
+                for x in r:
+                    print(x)
                 resp = web.Response(body=app['__templating__'].get_template(template).render(**r).encode('utf-8'))
                 resp.content_type = 'text/html;charset=utf-8'
                 return resp
         if isinstance(r, int) and r >= 100 and r < 600:
-            return web.Responser(r)
+            return web.Response(r)
         if isinstance(r, tuple) and len(r) == 2:
             t, m = r
             if isinstance(t, int) and t >= 100 and t < 600:
@@ -124,7 +121,6 @@ async def response_factory(app, handler):
         resp = web.Response(body=str(r).encode('utf-8'))
         resp.content_type = 'text/plain;charset=utf-8'
         return resp
-
     return response
 
 
@@ -137,7 +133,7 @@ def datetime_filter(t):
     if delta < 86400:
         return u'%s小时前' % (delta // 3600)
     if delta < 604800:
-        return u'%天前' % (delta // 86400)
+        return u'%s天前' % (delta // 86400)
     dt = datetime.fromtimestamp(t)
     return u'%s年%s月%s日' % (dt.year, dt.month, dt.day)
 
@@ -153,11 +149,10 @@ async def init(loop=None):
     # 对它的‘GET’请求绑定一个处理方法
     # 也就是绑定路由
     # app.router.add_get('/', index_test)
-    await create_pool(loop=None, user='www-data', password='www-data', database='awesome')
+    await orm.create_pool(loop=None, user='www-data', password='www-data', database='awesome')
 
     # 写入日志
     logging.info('server started at http://127.0.0.1:9000...')
-    # web.run_app(app, host='127.0.0.1', port=9000)
     return app
 
 
