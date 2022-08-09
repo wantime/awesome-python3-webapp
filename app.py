@@ -1,5 +1,6 @@
 
-import logging; logging.basicConfig(level=logging.INFO)
+import logging;
+logging.basicConfig(level=logging.INFO)
 
 import asyncio, os, json, time
 from datetime import datetime
@@ -106,8 +107,6 @@ async def response_factory(app, handler):
                 # resp = web.Response(body=app['__templating__'].get_template(template).render(**r).encode('utf-8'))
                 # resp.content_type = 'text/html;charset=utf-8'
                 # return resp
-                for x in r:
-                    print(x)
                 resp = web.Response(body=app['__templating__'].get_template(template).render(**r).encode('utf-8'))
                 resp.content_type = 'text/html;charset=utf-8'
                 return resp
@@ -141,7 +140,7 @@ def datetime_filter(t):
 # 这里是网页服务的初始化
 async def init(loop=None):
     app = web.Application(middlewares=[
-        logger_factory, response_factory
+        logger_factory, response_factory, auth_factory
     ])
     init_jinja2(app, filters=dict(datetime=datetime_filter))
     add_routes(app, 'handlers')

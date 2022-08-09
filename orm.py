@@ -2,7 +2,7 @@
 
 __author__ = 'wantime@foxmail.com'
 
-import logging
+import logging;logging.basicConfig(level=logging.INFO)
 import aiomysql
 import time, uuid
 

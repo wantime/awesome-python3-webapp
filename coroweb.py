@@ -4,7 +4,7 @@
 __author__ = ''
 
 import asyncio, os, inspect, logging, functools
-
+logging.basicConfig(level=logging.INFO)
 from urllib import parse
 
 from aiohttp import web
