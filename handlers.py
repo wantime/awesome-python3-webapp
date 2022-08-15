@@ -78,17 +78,18 @@ def cookie2user(cookie_str):
 
 
 @get('/')
-def index(request):
-    summary = 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
-    blogs = [
-        Blog(id='1', name='Test Blog', summary=summary, created_at=time.time() - 120),
-        Blog(id='2', name='Something New', summary=summary, created_at=time.time() - 3600),
-        Blog(id='3', name='Learn Swift', summary=summary, created_at=time.time() - 7200)
-    ]
+def index(*, page='1'):
+    page_index = get_page_index(page)
+    num = yield from Blog.findNumber('count(id)')
+    page = Page(num)
+    if num == 0:
+        blogs =[]
+    else:
+        blogs = yield from Blog.findAll(orderBy='created_at desc', limit=(page.offset, page.limit))
     return {
         '__template__': 'blogs.html',
-        'blogs': blogs,
-        '__user__': request.__user__
+        'page': page,
+        'blogs': blogs
     }
 
 
@@ -112,12 +113,36 @@ def register():
         '__template__': 'register.html'
     }
 
-
 @get('/signin')
 def signin():
     return {
         '__template__': 'signin.html'
     }
+
+@post('/api/authenticate')
+async def authenticate(*, email, passwd):
+    if not email:
+        raise APIValueError('email', 'Invalid email.')
+    if not passwd:
+        raise APIValueError('passwd', 'Invalid password.')
+    users = await User.findAll('email=?', [email])
+    if len(users) == 0:
+        raise APIValueError('email', 'Email not exist.')
+    user = users[0]
+    # check passwd:
+    sha1 = hashlib.sha1()
+    sha1.update(user.id.encode('utf-8'))
+    sha1.update(b':')
+    sha1.update(passwd.encode('utf-8'))
+    if user.passwd != sha1.hexdigest():
+        raise APIValueError('passwd', 'Invalid password.')
+    # authenticate ok, set cookie:
+    r = web.Response()
+    r.set_cookie(COOKIE_NAME, user2cookie(user, 86400), max_age=86400, httponly=True)
+    user.passwd = '******'
+    r.content_type = 'application/json'
+    r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
+    return r
 
 
 @get('/signout')
@@ -127,9 +152,6 @@ def signout(request):
     r.set_cookie(COOKIE_NAME, '-deleted-', max_age=0, httponly=True)
     logging.info('user signed out.')
     return r
-
-
-
 
 
 
@@ -150,7 +172,6 @@ def manage_blogs(*, page='1'):
         '__template__': 'manage_blogs.html',
         'page_index': get_page_index(page)
     }
-
 
 @get('/manage/blogs/create')
 def manage_create_blog():
@@ -209,35 +230,10 @@ async def api_delete_comments(id, request):
     await c.remove()
     return dict(id=id)
 
-@post('/api/authenticate')
-async def authenticate(*, email, passwd):
-    if not email:
-        raise APIValueError('email', 'Invalid email.')
-    if not passwd:
-        raise APIValueError('passwd', 'Invalid password.')
-    users = await User.findAll('email=?', [email])
-    if len(users) == 0:
-        raise APIValueError('email', 'Email not exist.')
-    user = users[0]
-    # check passwd:
-    sha1 = hashlib.sha1()
-    sha1.update(user.id.encode('utf-8'))
-    sha1.update(b':')
-    sha1.update(passwd.encode('utf-8'))
-    if user.passwd != sha1.hexdigest():
-        raise APIValueError('passwd', 'Invalid password.')
-    # authenticate ok, set cookie:
-    r = web.Response()
-    r.set_cookie(COOKIE_NAME, user2cookie(user, 86400), max_age=86400, httponly=True)
-    user.passwd = '******'
-    r.content_type = 'application/json'
-    r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
-    return r
 
 
 _RE_EMAIL = re.compile(r'^[a-z0-9\.\-\_]+\@[a-z0-9\-\_]+(\.[a-z0-9\-\_]+){1,4}$')
 _RE_SHA1 = re.compile(r'^[0-9a-f]{40}$')
-
 
 @post('/api/users')
 def api_register_user(*, email, name, passwd):
@@ -262,8 +258,6 @@ def api_register_user(*, email, name, passwd):
     r.content_type = 'application/json'
     r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
     return r
-
-
 
 @get('/api/blogs')
 async def api_blogs(*, page='1'):
